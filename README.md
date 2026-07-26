@@ -156,4 +156,4 @@ In the Airflow UI, toggle `fmp_sp500_pipeline` **ON** and hit **Trigger**.
 ---
 
 ## 👤 Author
-**Muhammad Danish** — BS Computer Science, Indus University, Karachi
+**Muhammad Danish** — BS Computer Science, SMIT, Karachi
