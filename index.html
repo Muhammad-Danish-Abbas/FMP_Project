@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FMP S&amp;P 500 Pipeline — Muhammad Danish</title>
+<meta name="description" content="An automated data pipeline that pulls S&P 500 company data from the FMP API and loads it into Snowflake, orchestrated with Apache Airflow.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a1120;
+    --panel: #10192e;
+    --panel-2: #0d1526;
+    --grid: #1b2740;
+    --border: #22314e;
+    --text: #e7edf9;
+    --muted: #8b98b8;
+    --flow: #34d399;
+    --node: #4c8dff;
+    --source: #f5a623;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:
+      linear-gradient(180deg, rgba(10,17,32,0) 0%, var(--bg) 40%),
+      repeating-linear-gradient(0deg, var(--grid) 0, var(--grid) 1px, transparent 1px, transparent 48px),
+      repeating-linear-gradient(90deg, var(--grid) 0, var(--grid) 1px, transparent 1px, transparent 48px),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a{color:inherit;}
+  :focus-visible{outline: 2px solid var(--flow); outline-offset: 3px;}
+
+  .wrap{max-width: 1040px; margin: 0 auto; padding: 0 24px;}
+
+  header.top{
+    position: sticky; top:0; z-index: 20;
+    backdrop-filter: blur(10px);
+    background: rgba(10,17,32,0.75);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar{display:flex; align-items:center; justify-content:space-between; padding: 16px 0;}
+  .brand{font-family: var(--mono); font-size: 14px; letter-spacing: 0.02em; color: var(--muted);}
+  .brand b{color: var(--text);}
+  .nav-links{display:flex; gap: 24px; font-family: var(--mono); font-size: 13px;}
+  .nav-links a{color: var(--muted); text-decoration:none; transition: color .2s;}
+  .nav-links a:hover{color: var(--flow);}
+  @media (max-width: 640px){ .nav-links{display:none;} }
+
+  .eyebrow{
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--flow); display:flex; align-items:center; gap:8px;
+  }
+  .eyebrow::before{content:''; width:6px; height:6px; border-radius:50%; background: var(--flow); box-shadow: 0 0 8px var(--flow);}
+
+  /* HERO */
+  .hero{padding: 96px 0 56px;}
+  .hero h1{
+    font-size: clamp(32px, 5.2vw, 54px); line-height: 1.08; font-weight: 800; letter-spacing: -0.02em;
+    margin: 18px 0 20px; max-width: 15ch;
+  }
+  .hero p.lede{color: var(--muted); font-size: 18px; max-width: 56ch; margin-bottom: 32px;}
+  .cta-row{display:flex; gap: 14px; flex-wrap: wrap;}
+  .btn{
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.02em;
+    padding: 12px 20px; border-radius: 8px; text-decoration:none; display:inline-flex; align-items:center; gap:8px;
+    transition: transform .15s ease, background .2s ease, border-color .2s ease;
+  }
+  .btn-primary{ background: var(--flow); color: #06231a; font-weight: 700; }
+  .btn-primary:hover{ transform: translateY(-1px); background:#4de3ad; }
+  .btn-ghost{ border: 1px solid var(--border); color: var(--text); }
+  .btn-ghost:hover{ border-color: var(--flow); color: var(--flow); }
+
+  /* PIPELINE SCHEMATIC */
+  .schematic{
+    margin-top: 64px; border: 1px solid var(--border); border-radius: 16px;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    padding: 36px 20px 28px; overflow: hidden; position: relative;
+  }
+  .schematic-label{
+    font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase;
+    position: absolute; top: 14px; left: 20px;
+  }
+  .rail{
+    display:flex; align-items:center; justify-content: space-between;
+    gap: 6px; margin-top: 18px;
+  }
+  .node{
+    flex: 1; min-width: 0; border-radius: 12px; padding: 16px 14px; text-align:left;
+    border: 1px solid var(--border); position: relative;
+  }
+  .node .k{font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; opacity: .75;}
+  .node .t{font-family: var(--mono); font-size: 13px; font-weight: 600; margin-top: 6px; word-break: break-word;}
+  .node .d{font-size: 11px; color: var(--muted); margin-top: 6px;}
+  .node.source{ background: rgba(245,166,35,0.10); border-color: rgba(245,166,35,0.35); }
+  .node.source .k{color: var(--source);}
+  .node.task{ background: rgba(76,141,255,0.10); border-color: rgba(76,141,255,0.35); }
+  .node.task .k{color: var(--node);}
+  .node.sink{ background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.4); }
+  .node.sink .k{color: var(--flow);}
+  .connector{
+    width: 28px; height: 2px; background: var(--border); position: relative; flex-shrink:0;
+  }
+  .connector::after{
+    content:''; position:absolute; top:-2px; left:0; width:6px; height:6px; border-radius:50%;
+    background: var(--flow); box-shadow: 0 0 8px var(--flow);
+    animation: travel 2.4s linear infinite;
+  }
+  @keyframes travel{
+    0%{ left: -6px; opacity: 0; }
+    10%{ opacity: 1; }
+    90%{ opacity: 1; }
+    100%{ left: 100%; opacity: 0; }
+  }
+  @media (max-width: 780px){
+    .rail{flex-direction: column; align-items: stretch;}
+    .connector{width: 2px; height: 22px; margin: 0 auto;}
+    .connector::after{ top:0; left:-2px; animation: travelv 2.4s linear infinite; }
+    @keyframes travelv{ 0%{top:-6px;opacity:0;} 10%{opacity:1;} 90%{opacity:1;} 100%{top:100%;opacity:0;} }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .connector::after{ animation: none; opacity: .6; left: 46%; }
+  }
+
+  /* SECTIONS */
+  section{padding: 64px 0;}
+  section h2{
+    font-size: clamp(22px, 3vw, 30px); font-weight: 800; letter-spacing: -0.01em; margin-bottom: 8px;
+  }
+  section .section-sub{color: var(--muted); max-width: 62ch; margin-bottom: 32px;}
+  .divider{height:1px; background: var(--border); border:none;}
+
+  .stack-grid{display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px;}
+  .chip{
+    border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--panel);
+  }
+  .chip .role{font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted);}
+  .chip .name{font-weight: 600; margin-top: 4px;}
+
+  .steps{counter-reset: step; display:flex; flex-direction:column; gap: 0;}
+  .step{ display:grid; grid-template-columns: 44px 1fr; gap: 16px; padding: 18px 0; border-top: 1px solid var(--border);}
+  .step:last-child{border-bottom: 1px solid var(--border);}
+  .step .num{
+    counter-increment: step; font-family: var(--mono); color: var(--flow); font-weight: 700; font-size: 14px;
+  }
+  .step .num::before{ content: counter(step, decimal-leading-zero); }
+  .step h3{font-size: 15px; font-weight: 700; margin-bottom: 4px;}
+  .step p{color: var(--muted); font-size: 14px;}
+
+  .gallery{display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px;}
+  figure{
+    margin:0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--panel);
+  }
+  figure img{display:block; width: 100%; height: auto;}
+  figcaption{
+    padding: 10px 14px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    border-top: 1px solid var(--border);
+  }
+
+  footer{
+    border-top: 1px solid var(--border); padding: 40px 0 60px;
+    color: var(--muted); font-size: 13px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;
+  }
+  footer a{color: var(--flow); text-decoration:none;}
+  footer a:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap topbar">
+    <div class="brand"><b>Muhammad Danish</b> / fmp-sp500-pipeline</div>
+    <nav class="nav-links">
+      <a href="#architecture">Architecture</a>
+      <a href="#stack">Stack</a>
+      <a href="#run">How it runs</a>
+      <a href="#evidence">Evidence</a>
+      <a href="https://github.com/Muhammad-Danish-Abbas/FMP_Project">Repo ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <span class="eyebrow">Data engineering · pipeline #001</span>
+    <h1>A pipeline that wakes up, fetches the S&amp;P 500, and puts it in a warehouse — on its own.</h1>
+    <p class="lede">Three Airflow tasks, one external API, one Snowflake table. Built to practice the parts of data engineering that don't show up in tutorials: SSL handshakes, VARIANT columns, and retries that actually retry.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/Muhammad-Danish-Abbas/FMP_Project" target="_blank" rel="noopener">View source on GitHub</a>
+      <a class="btn btn-ghost" href="#architecture">See how it flows</a>
+    </div>
+
+    <div class="schematic" id="architecture">
+      <span class="schematic-label">Live schematic — not a screenshot</span>
+      <div class="rail">
+        <div class="node source">
+          <div class="k">Source</div>
+          <div class="t">Wikipedia</div>
+          <div class="d">S&amp;P 500 constituent list</div>
+        </div>
+        <div class="connector"></div>
+        <div class="node task">
+          <div class="k">Task 1</div>
+          <div class="t">get_sp500_symbols</div>
+          <div class="d">Scrapes &amp; parses the table</div>
+        </div>
+        <div class="connector"></div>
+        <div class="node task">
+          <div class="k">Task 2</div>
+          <div class="t">hit_fmp_api</div>
+          <div class="d">Fetches company profiles</div>
+        </div>
+        <div class="connector"></div>
+        <div class="node task">
+          <div class="k">Task 3</div>
+          <div class="t">load_to_snowflake</div>
+          <div class="d">Writes structured + raw JSON</div>
+        </div>
+        <div class="connector"></div>
+        <div class="node sink">
+          <div class="k">Warehouse</div>
+          <div class="t">SP500_STOCK_DATA</div>
+          <div class="d">Queryable in Snowflake</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <section id="stack">
+    <span class="eyebrow">Stack</span>
+    <h2>Built with</h2>
+    <p class="section-sub">Every piece here was chosen because it's what a real pipeline of this shape would use — not the easiest option.</p>
+    <div class="stack-grid">
+      <div class="chip"><div class="role">Orchestration</div><div class="name">Apache Airflow (TaskFlow)</div></div>
+      <div class="chip"><div class="role">Data source</div><div class="name">Financial Modeling Prep API</div></div>
+      <div class="chip"><div class="role">Warehouse</div><div class="name">Snowflake</div></div>
+      <div class="chip"><div class="role">Language</div><div class="name">Python (pandas, requests)</div></div>
+      <div class="chip"><div class="role">Dev environment</div><div class="name">GitHub Codespaces</div></div>
+      <div class="chip"><div class="role">Schedule</div><div class="name">5 min (test) → daily (prod)</div></div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <section id="run">
+    <span class="eyebrow">Run log</span>
+    <h2>What actually happened, in order</h2>
+    <p class="section-sub">Three real issues came up while building this — each fixed at the source rather than worked around.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="num"></div>
+        <div>
+          <h3>Wikipedia returned 403 Forbidden</h3>
+          <p>pandas.read_html was fetching without a browser-like identity. Fixed by requesting the page with a proper User-Agent header before parsing.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num"></div>
+        <div>
+          <h3>Snowflake SSL hostname mismatch</h3>
+          <p>Account identifier needed the region joined with a hyphen, not split across separate connection fields.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num"></div>
+        <div>
+          <h3>VARIANT vs VARCHAR on insert</h3>
+          <p>Raw JSON needed PARSE_JSON() — and Snowflake only accepts that inside an INSERT ... SELECT, not a plain VALUES clause.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <section id="evidence">
+    <span class="eyebrow">Evidence</span>
+    <h2>It runs</h2>
+    <p class="section-sub">Three consecutive green tasks, and the rows to prove it landed in Snowflake.</p>
+    <div class="gallery">
+      <figure>
+        <img src="assets/airflow_dag_success.png" alt="Airflow DAG run showing all three tasks succeeded" loading="lazy">
+        <figcaption>Airflow — all three tasks: success</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/snowflake_data_loaded.png" alt="Snowflake query result showing loaded S&P 500 data" loading="lazy">
+        <figcaption>Snowflake — SP500_STOCK_DATA populated</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/original_design.png" alt="Architecture diagram of the pipeline" loading="lazy">
+        <figcaption>Architecture — source to warehouse</figcaption>
+      </figure>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap">
+  <div>Muhammad Danish — BS Computer Science, Indus University, Karachi</div>
+  <div><a href="https://github.com/Muhammad-Danish-Abbas/FMP_Project" target="_blank" rel="noopener">github.com/Muhammad-Danish-Abbas/FMP_Project ↗</a></div>
+</footer>
+
+</body>
+</html>
